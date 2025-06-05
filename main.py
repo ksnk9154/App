@@ -1,59 +1,58 @@
 import sys
-import asyncio
-
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-import streamlit as st
-import re
-from lanchain_helper import get_similar_answer_from_documents, fetch_txt_files_from_sharepoint, index_documents
-import streamlit as st
-import threading
 import os
-import tempfile
+import re
+import asyncio
 import time
+import tempfile
+import threading
 
-# Try pyttsx3
-tts_mode = "none"
-engine = None
-try:
-    import pyttsx3
-    engine = pyttsx3.init()
-    tts_mode = "pyttsx3"
-except Exception as e:
-    st.warning("pyttsx3 failed to initialize. Falling back to gTTS.")
-    tts_mode = "gTTS"
-
-# Fallback gTTS setup
+import streamlit as st
+import pyttsx3
 from gtts import gTTS
 import pygame
 
-def speak_text(text):
-    if tts_mode == "pyttsx3":
-        def run_speech():
-            try:
-                engine.say(text)
-                engine.runAndWait()
-            except RuntimeError as e:
-                print(f"⚠️ TTS RuntimeError ignored: {e}")
-        threading.Thread(target=run_speech, daemon=True).start()
-    elif tts_mode == "gTTS":
-        tts = gTTS(text=text, lang='en')
-        with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as fp:
-            tts.save(fp.name)
-            pygame.mixer.init()
-            pygame.mixer.music.load(fp.name)
-            pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():
-                time.sleep(0.1)
-    else:
-        st.warning("No TTS engine is available.")
+from lanchain_helper import get_similar_answer_from_documents, fetch_txt_files_from_sharepoint, index_documents
 
-if tts_mode == "pyttsx3":
+# Windows-specific asyncio fix
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# Initialize TTS engine (pyttsx3 or fallback)
+engine = None
+try:
+    engine = pyttsx3.init()
     engine.setProperty('rate', 150)
     engine.setProperty('volume', 1)
+except Exception as e:
+    engine = None
+    print("pyttsx3 failed to initialize:", e)
 
-# 🎨 UI Setup
+# Thread lock for audio safety
+tts_lock = threading.Lock()
+
+def speak_text(text):
+    """Speak text using pyttsx3 if available, otherwise fallback to gTTS."""
+    def run_speech():
+        with tts_lock:
+            try:
+                if engine:
+                    engine.say(text)
+                    engine.runAndWait()
+                else:
+                    tts = gTTS(text=text, lang='en')
+                    with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as fp:
+                        tts.save(fp.name)
+                        if not pygame.mixer.get_init():
+                            pygame.mixer.init()
+                        pygame.mixer.music.load(fp.name)
+                        pygame.mixer.music.play()
+                        while pygame.mixer.music.get_busy():
+                            time.sleep(0.1)
+            except Exception as e:
+                print(f"⚠️ TTS Error ignored: {e}")
+    threading.Thread(target=run_speech, daemon=True).start()
+
+# Streamlit UI setup
 col1, col2 = st.columns([0.1, 1])
 with col1:
     st.image("kenai.png", width=50)
@@ -67,25 +66,11 @@ if "messages" not in st.session_state:
 if "indexed" not in st.session_state:
     st.session_state.indexed = False
 
-tts_lock = threading.Lock()
-
-def speak_text(text):
-    def run_speech():
-        with tts_lock:
-            try:
-                if engine:
-                    engine.say(text)
-                    engine.runAndWait()
-                else:
-                    print("🧩 Skipping text-to-speech (TTS engine unavailable)")
-            except RuntimeError as e:
-                print(f"⚠️ TTS RuntimeError ignored: {e}")
-    threading.Thread(target=run_speech, daemon=True).start()
-
+# Warn if TTS engine unavailable
 if engine is None:
     st.warning("🟡 TTS engine is unavailable. Text-to-speech features are disabled on this platform.")
 
-# Auto index on app start if needed (only once)
+# Auto index documents on first load
 if not st.session_state.indexed:
     if not os.path.exists("./vector_index"):
         with st.spinner("📥 Indexing documents from SharePoint for first use..."):
@@ -126,10 +111,10 @@ input_container = st.container()
 with input_container:
     question = st.chat_input("Ask me anything...")
 
-# Process the question
+# Process input and generate response
 if question:
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "user" and st.session_state.messages[-1]["content"] == question:
-        pass
+        pass  # Prevent duplicate input
     else:
         st.session_state.messages.append({"role": "user", "content": question})
 
