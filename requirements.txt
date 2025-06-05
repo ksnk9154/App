@@ -1,4 +1,3 @@
-streamlit
 SQLAlchemy
 pydantic
 mysql-connector-python
@@ -10,3 +9,5 @@ sentence-transformers
 msal
 pyttsx3
 langchain_huggingface
+gTTS
+pygame

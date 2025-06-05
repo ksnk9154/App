@@ -7,20 +7,50 @@ if sys.platform == "win32":
 import streamlit as st
 import re
 from lanchain_helper import get_similar_answer_from_documents, fetch_txt_files_from_sharepoint, index_documents
+import streamlit as st
+import threading
+import os
+import tempfile
+import time
+
+# Try pyttsx3
+tts_mode = "none"
 try:
     import pyttsx3
     engine = pyttsx3.init()
+    tts_mode = "pyttsx3"
+except Exception as e:
+    st.warning("pyttsx3 failed to initialize. Falling back to gTTS.")
+    tts_mode = "gTTS"
+
+# Fallback gTTS setup
+from gtts import gTTS
+import pygame
+
+def speak_text(text):
+    if tts_mode == "pyttsx3":
+        def run_speech():
+            try:
+                engine.say(text)
+                engine.runAndWait()
+            except RuntimeError as e:
+                print(f"⚠️ TTS RuntimeError ignored: {e}")
+        threading.Thread(target=run_speech, daemon=True).start()
+    elif tts_mode == "gTTS":
+        tts = gTTS(text=text, lang='en')
+        with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as fp:
+            tts.save(fp.name)
+            pygame.mixer.init()
+            pygame.mixer.music.load(fp.name)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+    else:
+        st.warning("No TTS engine is available.")
+
+if tts_mode == "pyttsx3":
     engine.setProperty('rate', 150)
     engine.setProperty('volume', 1)
-except RuntimeError as e:
-    engine = None
-    print("⚠️ pyttsx3 initialization failed. eSpeak may be missing. Disabling TTS.")
-except Exception as e:
-    engine = None
-    print(f"⚠️ Unexpected TTS error: {e}")
-
-import threading
-import os
 
 # 🎨 UI Setup
 col1, col2 = st.columns([0.1, 1])
