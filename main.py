@@ -7,7 +7,18 @@ if sys.platform == "win32":
 import streamlit as st
 import re
 from lanchain_helper import get_similar_answer_from_documents, fetch_txt_files_from_sharepoint, index_documents
-import pyttsx3
+try:
+    import pyttsx3
+    engine = pyttsx3.init()
+    engine.setProperty('rate', 150)
+    engine.setProperty('volume', 1)
+except RuntimeError as e:
+    engine = None
+    print("⚠️ pyttsx3 initialization failed. eSpeak may be missing. Disabling TTS.")
+except Exception as e:
+    engine = None
+    print(f"⚠️ Unexpected TTS error: {e}")
+
 import threading
 import os
 
@@ -25,21 +36,23 @@ if "messages" not in st.session_state:
 if "indexed" not in st.session_state:
     st.session_state.indexed = False
 
-# Initialize TTS engine singleton & lock
-engine = pyttsx3.init()
-engine.setProperty('rate', 150)
-engine.setProperty('volume', 1)
 tts_lock = threading.Lock()
 
 def speak_text(text):
     def run_speech():
         with tts_lock:
             try:
-                engine.say(text)
-                engine.runAndWait()
+                if engine:
+                    engine.say(text)
+                    engine.runAndWait()
+                else:
+                    print("🧩 Skipping text-to-speech (TTS engine unavailable)")
             except RuntimeError as e:
                 print(f"⚠️ TTS RuntimeError ignored: {e}")
     threading.Thread(target=run_speech, daemon=True).start()
+
+if engine is None:
+    st.warning("🟡 TTS engine is unavailable. Text-to-speech features are disabled on this platform.")
 
 # Auto index on app start if needed (only once)
 if not st.session_state.indexed:
