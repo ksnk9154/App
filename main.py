@@ -15,6 +15,7 @@ import time
 
 # Try pyttsx3
 tts_mode = "none"
+engine = None
 try:
     import pyttsx3
     engine = pyttsx3.init()
