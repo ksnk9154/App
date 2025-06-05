@@ -1,3 +1,6 @@
+import asyncio
+asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import streamlit as st
 import re
 from lanchain_helper import get_similar_answer_from_documents, fetch_txt_files_from_sharepoint, index_documents
